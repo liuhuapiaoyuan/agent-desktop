@@ -64,9 +64,9 @@ pub(crate) fn window_op_impl(
     match op {
         WindowOp::Resize { width, height } => resize(handle, &evidence, width, height, deadline),
         WindowOp::Move { x, y } => move_to(handle, &evidence, x, y, deadline),
-        WindowOp::Minimize => show_verb(handle, &evidence, ShowVerb::Minimize, deadline),
-        WindowOp::Maximize => show_verb(handle, &evidence, ShowVerb::Maximize, deadline),
-        WindowOp::Restore => show_verb(handle, &evidence, ShowVerb::Restore, deadline),
+        WindowOp::Minimize => show_verb(handle, &evidence, ShowVerb::Minimize, deadline, &win.title),
+        WindowOp::Maximize => show_verb(handle, &evidence, ShowVerb::Maximize, deadline, &win.title),
+        WindowOp::Restore => show_verb(handle, &evidence, ShowVerb::Restore, deadline, &win.title),
     }
 }
 
@@ -166,6 +166,7 @@ fn show_verb(
     evidence: &WindowIdentityEvidence<'_>,
     verb: ShowVerb,
     deadline: Deadline,
+    title: &str,
 ) -> Result<(), AdapterError> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, ShowWindowAsync,
@@ -181,9 +182,32 @@ fn show_verb(
         return Err(before_write(win32_last_error("ShowWindowAsync failed")));
     }
     wait_for_placement(deadline, || {
-        ensure_owned_after(evidence)?;
+        ensure_owned_after_for_show(handle, evidence, title)?;
         Ok(verb_is_satisfied(verb, placement_show_cmd(handle)?))
     })
+}
+
+/// UWP hosted windows can hand the HWND to `ApplicationFrameHost` while a
+/// show verb is in flight; the handle and the visible title still name the
+/// same window, so accept that generation change. Anything else keeps the
+/// strict recycle error.
+#[cfg(target_os = "windows")]
+fn ensure_owned_after_for_show(
+    handle: super::window_enum::WindowHandle,
+    evidence: &WindowIdentityEvidence<'_>,
+    title: &str,
+) -> Result<(), AdapterError> {
+    if evidence.owns_handle_now().map_err(after_write)? {
+        return Ok(());
+    }
+    let live = super::window_identity::live_window_title(handle);
+    if !title.is_empty() && live.as_deref() == Some(title) {
+        return Ok(());
+    }
+    Err(after_write(AdapterError::new(
+        ErrorCode::WindowNotFound,
+        "Target window handle changed ownership after window operation",
+    )))
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -192,6 +216,7 @@ fn show_verb(
     _evidence: &WindowIdentityEvidence<'_>,
     _verb: ShowVerb,
     _deadline: Deadline,
+    _title: &str,
 ) -> Result<(), AdapterError> {
     Err(AdapterError::not_supported("window_op"))
 }
