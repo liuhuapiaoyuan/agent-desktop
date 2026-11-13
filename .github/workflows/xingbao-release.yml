@@ -1,0 +1,44 @@
+name: xingbao-patched-release
+
+on:
+  push:
+    tags:
+      - 'xingbao-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Build Windows patched binary and publish release
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build agent-desktop
+        run: cargo build --release --locked -p agent-desktop
+
+      - name: Stage release assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $tag = "${{ github.ref_name }}"
+          $asset = "agent-desktop-$tag-win32-x64.exe"
+          Copy-Item target/release/agent-desktop.exe "dist/$asset"
+          $hash = (Get-FileHash "dist/$asset" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $asset" | Set-Content "dist/$asset.sha256" -NoNewline
+          Get-Content "dist/$asset.sha256"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 'agent-desktop ${{ github.ref_name }} (Windows patched)'
+          body_path: .github/release-notes-xingbao.md
+          files: |
+            dist/*.exe
+            dist/*.sha256
+          fail_on_unmatched_files: true

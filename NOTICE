@@ -1,0 +1,16 @@
+agent-desktop (modified fork)
+
+Copyright Vercel, Inc. and contributors.
+
+This distribution contains a modified build of agent-desktop v1.3.0.
+Modifications made by this fork (branch xingbao/windows-fixes):
+  - 51dba69: cherry-pick of upstream PR #651, foreground activation through UI Automation
+  - aab1c4d: tolerate UWP HWND ownership change during window show verbs
+  - ad4e3eb: synthesize wheel for headed scroll when the target has no ScrollPattern
+
+The upstream project is licensed under the Apache License, Version 2.0.
+See LICENSE for the full license text.
+Upstream: https://github.com/vercel-labs/agent-desktop
+
+The released Windows executable is built from this modified source; it is not the
+unmodified upstream release artifact.
