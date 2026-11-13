@@ -71,8 +71,52 @@ mod imp {
     use crate::actions::mutation::{classify_success, classify_write};
     use crate::tree::properties::property_ids::TreeProperty;
     use crate::tree::properties::read_one;
-    use agent_desktop_core::{DeliverySemantics, LocatorField, Rect};
+    use agent_desktop_core::{
+        DeliverySemantics, LocatorField, MouseButton, MouseEvent, MouseEventKind, Point, Rect,
+    };
     use uiautomation::patterns::UIScrollPattern;
+
+    const PHYSICAL_SCROLL_LABEL: &str = "SendInput.wheel";
+
+    /// Headed-only fallback for targets with no semantic ScrollPattern
+    /// (Notepad's text surface, Chromium documents): move the cursor to the
+    /// element center and synthesize wheel lines. Delivery is unverified by
+    /// construction - there is no scroll position to read back.
+    pub(crate) fn physical_scroll_steps(
+        element: &UIAElement,
+        direction: &Direction,
+        amount: u32,
+        deadline: Deadline,
+    ) -> Result<Vec<ActionStep>, AdapterError> {
+        let bounds = known_bounds(element).ok_or_else(|| {
+            AdapterError::new(ErrorCode::ActionFailed, "Missing scroll target bounds")
+                .with_disposition(DeliverySemantics::not_delivered())
+        })?;
+        let point = Point {
+            x: bounds.x + bounds.width / 2.0,
+            y: bounds.y + bounds.height / 2.0,
+        };
+        let lines = amount as f64;
+        let (delta_x, delta_y) = match direction {
+            Direction::Down => (0.0, -lines),
+            Direction::Up => (0.0, lines),
+            Direction::Right => (lines, 0.0),
+            Direction::Left => (-lines, 0.0),
+        };
+        crate::input::mouse::synthesize_mouse(
+            MouseEvent {
+                kind: MouseEventKind::Wheel { delta_x, delta_y },
+                point,
+                button: MouseButton::Left,
+                modifiers: Vec::new(),
+            },
+            deadline,
+        )?;
+        Ok(vec![build_step(
+            PHYSICAL_SCROLL_LABEL,
+            DeliveryOutcome::from_delivery(true, false),
+        )])
+    }
 
     pub(crate) fn scroll_steps(
         element: &UIAElement,
@@ -279,6 +323,9 @@ mod imp {
 }
 
 pub(crate) use imp::scroll_steps;
+
+#[cfg(target_os = "windows")]
+pub(crate) use imp::physical_scroll_steps;
 
 #[cfg(target_os = "windows")]
 pub(crate) use imp::known_bounds;

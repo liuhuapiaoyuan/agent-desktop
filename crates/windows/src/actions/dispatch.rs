@@ -39,7 +39,7 @@ mod imp {
     use crate::actions::physical_keyboard::{
         press_key_element_steps, press_key_global, type_text_steps,
     };
-    use crate::actions::scroll::scroll_steps;
+    use crate::actions::scroll::{physical_scroll_steps, scroll_steps};
     use crate::actions::scroll_into_view::scroll_into_view_outcome;
     use crate::actions::select::select_steps;
     use crate::actions::toggle_state::{check_steps, toggle_steps, uncheck_steps};
@@ -140,8 +140,16 @@ mod imp {
                 Ok(ActionResult::from_execution(&request.action, steps))
             }
             Action::Scroll(direction, amount) => {
-                let steps = scroll_steps(element, direction, *amount, deadline)?;
-                Ok(ActionResult::from_execution(&request.action, steps))
+                match scroll_steps(element, direction, *amount, deadline) {
+                    Ok(steps) => Ok(ActionResult::from_execution(&request.action, steps)),
+                    // Headed scroll on a target without ScrollPattern: physical
+                    // wheel at the element center, reported unverified.
+                    Err(_) if request.policy.is_headed() => {
+                        let steps = physical_scroll_steps(element, direction, *amount, deadline)?;
+                        Ok(ActionResult::from_execution(&request.action, steps))
+                    }
+                    Err(error) => Err(error),
+                }
             }
         }
     }
